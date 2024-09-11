@@ -1,0 +1,89 @@
+import os
+import glob
+import pandas as pd
+
+#En este código se realizó un preprocesamiento de los datos, combinando todos los datos que obtuvimos del código "PONER" y aplicandoles un filtro (aquellos que registraron 
+#datos durante menos del 75% del periodo total de la ola de calor se descartan), y se muestren en pantalla.
+
+def analizar_y_filtrar_csv():
+    # Solicitar los dígitos al usuario
+    #digitos = input("Por favor, ingrese los cuatro dígitos que desea buscar en los nombres de los archivos CSV: ")
+    
+    # Ruta específica en Windows
+    ruta_archivos = r"C:\Users\cordo\OneDrive\Escritorio\Masterdiaboloso\Dispersión\TFM\Olasnuevas2"
+    ruta_guardado = os.path.join(ruta_archivos, "modificados")
+
+    # Crear carpeta de guardado si no existe
+    if not os.path.exists(ruta_guardado):
+        os.makedirs(ruta_guardado)
+    
+    # Crear el patrón de búsqueda de archivos
+    patron_busqueda = os.path.join(ruta_archivos, "*.csv")
+    
+    # Buscar todos los archivos que coincidan con el patrón
+    archivos_csv = glob.glob(patron_busqueda)
+    
+    # Analizar y filtrar cada archivo CSV
+    for archivo in archivos_csv:
+        df = pd.read_csv(archivo)
+        
+        # Identificar columnas con más del 25% de datos nulos
+        umbral_nulos = 0.25
+        columnas_a_eliminar = df.columns[df.isnull().mean() > umbral_nulos].tolist()
+        
+        # Eliminar las columnas que tienen más del 25% de datos nulos
+        df_filtrado = df.drop(columns=columnas_a_eliminar)
+        
+        # Guardar el DataFrame modificado en la nueva carpeta
+        nombre_archivo = os.path.basename(archivo)
+        ruta_archivo_modificado = os.path.join(ruta_guardado, nombre_archivo)
+        df_filtrado.to_csv(ruta_archivo_modificado, index=False)
+        
+        print(f"Archivo '{nombre_archivo}' procesado y guardado en '{ruta_archivo_modificado}'. Columnas eliminadas: {columnas_a_eliminar}")
+    
+    print("Procesamiento completado.")
+
+# Llamar a la función
+analizar_y_filtrar_csv()
+
+def concatenar_archivos_csv():
+    # Solicitar los dígitos al usuario
+    digitos = input("Por favor, ingrese los dígitos que desea buscar en los nombres de los archivos CSV: ")
+    
+    # Ruta específica en Windows
+    ruta_archivos = r"C:\Users\cordo\OneDrive\Escritorio\Masterdiaboloso\Dispersión\TFM\Olasnuevas2\modificados"
+    
+    # Crear el patrón de búsqueda de archivos
+    patron_busqueda = os.path.join(ruta_archivos, f"*{digitos}*.csv")
+    
+    # Buscar todos los archivos que coincidan con el patrón
+    archivos_csv = glob.glob(patron_busqueda)
+    
+    # Verificar si se encontraron archivos
+    if not archivos_csv:
+        raise FileNotFoundError(f"No se encontraron archivos CSV con los dígitos '{digitos}' en su nombre.")
+    
+    # Leer y combinar todos los archivos CSV en un solo DataFrame
+    dataframes = []
+    for archivo in archivos_csv:
+        df = pd.read_csv(archivo)
+        dataframes.append(df)
+    
+    # Concatenar horizontalmente los DataFrames, ignorando el índice original
+    df_combinado = pd.concat(dataframes, axis=1)
+    
+    # Eliminar las columnas llamadas "hour" salvo la primera
+    columnas_hour = [col for col in df_combinado.columns if col == "hour"]
+    if len(columnas_hour) > 1:
+        # Mantener solo la primera columna "hour"
+        df_combinado = df_combinado.loc[:, ~df_combinado.columns.duplicated()]
+    
+    # Guardar el DataFrame combinado en un nuevo archivo CSV
+    archivo_salida = os.path.join(ruta_archivos, f"combinado_{digitos}.csv")
+    df_combinado.to_csv(archivo_salida, index=False)
+    
+    # Imprimir mensaje de éxito y la ruta del archivo combinado
+    print(f"Archivos combinados exitosamente. Archivo guardado en: {archivo_salida}")
+
+# Llamar a la función
+concatenar_archivos_csv()
