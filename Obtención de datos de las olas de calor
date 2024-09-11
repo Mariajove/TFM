@@ -1,0 +1,57 @@
+import pandas as pd
+#Indicaciones: El excel usado, llamado olasdecalor.xlsx es un excel que posee varias columnas donde se indican fechas de inicio y fin de la 
+#ola de calor en formato dd/mm/aaa hh:mm:ss, además de varias columnas que indican las provincias afectadas (eran multiples columnas con el nombre de las provincias,
+#si la provincia se vio afectada por la ola, esa columna poseia el numero 1, y si no, el numero 0). Estas columnas eran las ultimas del excel.
+
+
+# Cargar datos de olas de calor, en mi caso es el que se muestra en la siguiente linea
+archivo_excel = r'C:\Users\cordo\OneDrive\Escritorio\Masterdiaboloso\Dispersión\TFM\olasdecalor.xlsx'
+df = pd.read_excel(archivo_excel, sheet_name='Datos')
+
+# Convertir las columnas 'INICIO' y 'FIN' a datetime
+df['INICIO'] = pd.to_datetime(df['INICIO'], dayfirst=True, errors='coerce')
+df['FIN'] = pd.to_datetime(df['FIN'], dayfirst=True, errors='coerce')
+
+# Ajustar la hora de la columna 'FIN' a las 23:00:00
+df['FIN'] = df['FIN'] + pd.Timedelta(hours=23)
+
+# Función para obtener provincias afectadas por fecha de inicio
+def provincias_afectadas_por_fecha(df, fecha_inicio):
+    # Convertir la fecha de inicio a datetime
+    fecha_inicio = pd.to_datetime(fecha_inicio, dayfirst=True, errors='coerce')
+    
+    # Filtra la fila correspondiente a la fecha de inicio
+    fila = df[df['INICIO'] == fecha_inicio]
+    if fila.empty:
+        return f"No se encontró la ola de calor con inicio en {fecha_inicio}."
+    
+    # Selecciona las últimas ocho columnas (provincias) y filtra las que tienen el valor 1
+    provincias = fila.iloc[0, -8:]
+    provincias_afectadas = provincias[provincias == 1].index.tolist()
+    
+    return provincias_afectadas
+
+# Función para obtener la fecha de FIN dado un INICIO
+def fecha_fin_por_inicio(df, fecha_inicio):
+    # Convertir la fecha de inicio a datetime
+    fecha_inicio = pd.to_datetime(fecha_inicio, dayfirst=True, errors='coerce')
+    
+    # Filtra la fila correspondiente a la fecha de inicio
+    fila = df[df['INICIO'] == fecha_inicio]
+    if fila.empty:
+        return None
+    
+    # Obtener la fecha de FIN correspondiente
+    fecha_fin = fila.iloc[0]['FIN']
+    
+    return fecha_fin
+
+# Ejemplo de uso
+fecha_inicio = input('Dime la fecha de inicio de la ola de calor ')
+fecha_fin = fecha_fin_por_inicio(df, fecha_inicio)
+if fecha_fin:
+    provincias = provincias_afectadas_por_fecha(df, fecha_inicio)
+    print(f"La ola de calor que inició el {fecha_inicio} terminó el {fecha_fin}.")
+    print(f"Provincias afectadas por la ola de calor con inicio en {fecha_inicio}: {provincias}")
+else:
+    print(f"No se encontró la ola de calor con inicio en {fecha_inicio}.")
