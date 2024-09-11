@@ -1,0 +1,235 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
+import glob
+import re
+import numpy as np
+
+# Para guardar las graficas se crea un archivo con un nombre que le indiquemos
+coso = input('Nombre carpeta: ')
+carpeta_destino = fr'C:\Users\cordo\OneDrive\Escritorio\Masterdiaboloso\Dispersión\TFM\{coso}'
+if not os.path.exists(carpeta_destino):
+    os.makedirs(carpeta_destino)
+
+# Aqui colocamos la fecha de inicio y de fin de la ola de calor (si se combina este código con el que se llama "Obtención de datos de las olas de calor" no sería necesario)
+y indicamos la provincia que deseamos estudiar (se llamó inicialmente ciudad ya que todas las capitales de provincia coinciden en nombre con la provincia)
+ciudad = input('¿Qué provincia quieres graficar? ')
+fecha_inicio = input('Fecha de inicio (dd/mm/aaaa): ')  # Ejemplo: 01/06/2023
+fecha_fin = input('Fecha de fin (dd/mm/aaaa): ')  # Ejemplo: 30/06/2023
+fecha_fin = f"{fecha_fin} 23:00:00"
+
+# Se convierten las fechas de inicio y fin a objetos datetime para poder usar los formatos correctos
+fecha_inicio_dt = pd.to_datetime(fecha_inicio, format='%d/%m/%Y')
+fecha_fin_dt = pd.to_datetime(fecha_fin, format='%d/%m/%Y %H:%M:%S')
+
+# Dependiendo del año en el que ocurrió la ola de calor, buscamos el excel para realizar los calculos 
+year_ola_calor = fecha_fin_dt.year
+archivo_ozono = fr'C:\Users\cordo\OneDrive\Escritorio\Masterdiaboloso\Dispersión\TFM\ozono_{year_ola_calor}.xls'
+
+# Leer el archivo Excel correspondiente al año de la ola de calor
+df2 = pd.read_excel(archivo_ozono, sheet_name=ciudad)
+
+# Seleccionar las columnas de interés desde la segunda hasta la última, ya que la primera indica la fecha y hora donde se tomaron registros 
+#(la segunda en adelante son los datos registrados en cada estación)
+columnas_interes = df2.columns[1:]
+
+# Se definio un esquema de colores fijo: azul, amarillo, verde, rojo y lila. Esto para que coincidieran los colores por estación y se comprendiera mejor.
+esquema_colores = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+
+# Convertir la columna de fecha y hora a formato datetime
+df2['datetime'] = pd.to_datetime(df2['FECHA_HORA'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+
+# Filtrar los datos según las fechas proporcionadas
+mascara = (df2['datetime'] >= fecha_inicio_dt) & (df2['datetime'] <= fecha_fin_dt)
+datos_filtrados = df2.loc[mascara]
+
+# Verificar si los datos filtrados están vacíos
+if datos_filtrados.empty:
+    print("No hay datos en el rango de fechas especificado.")
+else:
+    # Calcular las horas transcurridas desde la fecha de inicio para cada registro filtrado
+    datos_filtrados['horas_transcurridas'] = (datos_filtrados['datetime'] - fecha_inicio_dt).dt.total_seconds() / 3600
+
+    # Graficar los datos individualmente y guardar los valores del eje y
+    valores_y = {}
+    for columna in columnas_interes:
+        valores_y[columna] = datos_filtrados[columna].tolist()
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(datos_filtrados['horas_transcurridas'], datos_filtrados[columna], marker='o', linestyle='-')
+        plt.xlabel('Horas transcurridas')
+        plt.ylabel('Concentración (μg/m³)')
+        plt.title(f'Concentración de {columna} a lo largo del tiempo')
+        plt.grid(True)
+        multiples_de_24 = np.arange(0, datos_filtrados['horas_transcurridas'].max(), 24)
+        plt.xticks(multiples_de_24)
+        nombre_archivo = f'graficauni_{columna.replace("/", "-").replace(" ", "_")}.png'
+        ruta_archivo = os.path.join(carpeta_destino, nombre_archivo)
+        plt.savefig(ruta_archivo)
+        plt.show()
+
+    # Graficar en conjuntos de cinco en cinco
+    for i in range(0, len(columnas_interes), 5):
+        columnas_subgrupo = columnas_interes[i:i+5]
+        plt.figure(figsize=(10, 6))
+        for j, columna in enumerate(columnas_subgrupo):
+            # Asignar el color según el índice de la columna
+            color = esquema_colores[j % len(esquema_colores)]
+            plt.plot(datos_filtrados['horas_transcurridas'], datos_filtrados[columna], marker='o', linestyle='-', label=columna, color=color)
+        plt.xlabel('Horas transcurridas')
+        plt.ylabel('Concentración (μg/m³)')
+        plt.title(f'Concentración a lo largo del tiempo (Columnas {i+1} a {min(i+5, len(columnas_interes))})')
+        plt.legend()
+        plt.grid(True)
+        multiples_de_24 = np.arange(0, datos_filtrados['horas_transcurridas'].max(), 24)
+        plt.xticks(multiples_de_24)
+        nombre_archivo = f'graficatotal_grupo_{i//5+1}.png'
+        ruta_archivo = os.path.join(carpeta_destino, nombre_archivo)
+        plt.savefig(ruta_archivo)
+        plt.show()
+
+
+    for columna in columnas_interes:
+        print(f"Valores del eje y para la columna {columna}:")
+        print(valores_y[columna])
+
+    # Calcular el promedio hora a hora durante la ola de calor
+    datos_filtrados['hour'] = datos_filtrados['datetime'].dt.hour
+    promedio_hora_a_hora = datos_filtrados.groupby('hour')[columnas_interes].mean()
+
+    # Graficar la evolución promedio hora a hora durante la ola de calor
+    for columna in columnas_interes:
+        plt.figure(figsize=(10, 6))
+        plt.plot(promedio_hora_a_hora.index, promedio_hora_a_hora[columna], marker='o', linestyle='-', label=f'Promedio {columna}')
+        plt.xlabel('Hora del Día')
+        plt.ylabel('Concentración Promedio (μg/m³)')
+        plt.title(f'Evolución promedio hora a hora de {columna} durante la ola de calor')
+        plt.legend()
+        plt.grid(True)
+        nombre_archivo = f'promedioola_{columna.replace("/", "-").replace(" ", "_")}.png'
+        ruta_archivo = os.path.join(carpeta_destino, nombre_archivo)
+        plt.savefig(ruta_archivo)
+        plt.show()
+
+    # Graficar en conjuntos de cinco en cinco
+    for i in range(0, len(columnas_interes), 5):
+        columnas_subgrupo = columnas_interes[i:i+5]
+        plt.figure(figsize=(10, 6))
+        for j, columna in enumerate(columnas_subgrupo):
+            # Asignar el color según el índice de la columna
+            color = esquema_colores[j % len(esquema_colores)]
+            plt.plot(promedio_hora_a_hora.index, promedio_hora_a_hora[columna], marker='o', linestyle='-', label=columna, color=color)
+        plt.xlabel('Hora del Día')
+        plt.ylabel('Concentración Promedio (μg/m³)')
+        plt.title(f'Evolución promedio hora a hora (Columnas {i+1} a {min(i+5, len(columnas_interes))}) en la ola de calor')
+        plt.legend()
+        plt.grid(True)
+        nombre_archivo = f'promedioola_grupo_{i//5+1}.png'
+        ruta_archivo = os.path.join(carpeta_destino, nombre_archivo)
+        plt.savefig(ruta_archivo)
+        plt.show()
+
+
+    # Definir el mes de la ola de calor
+    mes_ola_calor = fecha_inicio_dt.month
+
+    # Cargar y concatenar los datos de concentraciones horarias para cada año del 2010 al 2021
+    archivos_excel = glob.glob(r'C:\Users\cordo\OneDrive\Escritorio\Masterdiaboloso\Dispersión\TFM\ozono_*.xls')
+    dataframes = []
+
+    for archivo in archivos_excel:
+        df = pd.read_excel(archivo, sheet_name=ciudad)
+        df['datetime'] = pd.to_datetime(df['FECHA_HORA'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        dataframes.append(df)
+
+    # Concatenar todos los datos en un solo DataFrame
+    df_todos_los_anhos = pd.concat(dataframes, ignore_index=True)
+
+    # Filtrar los datos para el mes de la ola de calor
+    df_mes_ola_calor = df_todos_los_anhos[df_todos_los_anhos['datetime'].dt.month == mes_ola_calor]
+
+    # Calcular el promedio hora a hora durante el mes de la ola de calor a lo largo de todos los años
+    df_mes_ola_calor['hour'] = df_mes_ola_calor['datetime'].dt.hour
+    promedio_hora_a_hora_mes = df_mes_ola_calor.groupby('hour')[columnas_interes].mean()
+
+    # Graficar la evolución promedio hora a hora durante el mes
+    for columna in columnas_interes:
+        plt.figure(figsize=(10, 6))
+        plt.plot(promedio_hora_a_hora_mes.index, promedio_hora_a_hora_mes[columna], marker='o', linestyle='-', label=f'Promedio {columna}')
+        plt.xlabel('Hora del Día')
+        plt.ylabel('Concentración Promedio (μg/m³)')
+        plt.title(f'Evolución promedio hora a hora de {columna} durante el mes {mes_ola_calor} (2010-2021)')
+        plt.legend()
+        plt.grid(True)
+        nombre_archivo = f'promediomes_{columna.replace("/", "-").replace(" ", "_")}.png'
+        ruta_archivo = os.path.join(carpeta_destino, nombre_archivo)
+        plt.savefig(ruta_archivo)
+        plt.show()
+
+    # Graficar en conjuntos de cinco en cinco en el mes
+    for i in range(0, len(columnas_interes), 5):
+        columnas_subgrupo = columnas_interes[i:i+5]
+        plt.figure(figsize=(10, 6))
+        for j, columna in enumerate(columnas_subgrupo):
+            # Asignar el color según el índice de la columna
+            color = esquema_colores[j % len(esquema_colores)]
+            plt.plot(promedio_hora_a_hora.index, promedio_hora_a_hora[columna], marker='o', linestyle='-', label=columna, color=color)
+        plt.xlabel('Hora del Día')
+        plt.ylabel('Concentración Promedio (μg/m³)')
+        plt.title(f'Evolución promedio hora a hora (Columnas {i+1} a {min(i+5, len(columnas_interes))}) durante el mes {mes_ola_calor} (2010-2021)')
+        plt.legend()
+        plt.grid(True)
+        nombre_archivo = f'promedioola_grupo_{i//5+1}.png'
+        ruta_archivo = os.path.join(carpeta_destino, nombre_archivo)
+        plt.savefig(ruta_archivo)
+        plt.show()
+
+    # Calcular la diferencia entre los promedios de la ola de calor y del mes completo
+    diferencia_promedios = promedio_hora_a_hora - promedio_hora_a_hora_mes
+
+    # Graficar la evolución de la diferencia
+    for columna in columnas_interes:
+        plt.figure(figsize=(10, 6))
+        plt.plot(diferencia_promedios.index, diferencia_promedios[columna], marker='o', linestyle='-', color='red')
+        plt.axhline(y=0, color='black', linestyle='--', linewidth=0.8)  # línea horizontal en y=0
+        plt.xlabel('Hora del Día')
+        plt.ylabel('Diferencia de Concentración (μg/m³)')
+        plt.title(f'Diferencia en evolución promedio de {columna} entre ola de calor y mes {mes_ola_calor} (2010-2021)')
+        plt.grid(True)
+        nombre_archivo = f'promedios_{columna.replace("/", "-").replace(" ", "_")}.png'
+        ruta_archivo = os.path.join(carpeta_destino, nombre_archivo)
+        plt.savefig(ruta_archivo)
+        plt.show()
+
+    #Para las graficas de cinco en cinco
+    for i in range(0, len(columnas_interes), 5):
+        columnas_subgrupo = columnas_interes[i:i+5]
+        plt.figure(figsize=(10, 6))
+        for j, columna in enumerate(columnas_subgrupo):
+            # Asignar el color según el índice de la columna
+            color = esquema_colores[j % len(esquema_colores)]
+            plt.plot(diferencia_promedios.index, diferencia_promedios[columna], marker='o', linestyle='-', label=columna, color=color)
+        plt.axhline(y=0, color='black', linestyle='--', linewidth=0.8)  # línea horizontal en y=0
+        plt.xlabel('Hora del Día')
+        plt.ylabel('Diferencia de Concentración (μg/m³)')
+        plt.title(f'Diferencia en evolución promedio (Columnas {i+1} a {min(i+5, len(columnas_interes))}) entre ola de calor y mes {mes_ola_calor} (2010-2021)')
+        plt.legend()
+        plt.grid(True)
+        nombre_archivo = f'promedios_grupo_{i//5+1}.png'
+        ruta_archivo = os.path.join(carpeta_destino, nombre_archivo)
+        plt.savefig(ruta_archivo)
+        plt.show()
+
+
+    for columna in columnas_interes:
+        print(f"Diferencia hora a hora de {columna} entre ola de calor y mes {mes_ola_calor}:")
+        print(diferencia_promedios[columna])
+
+    # Solicitar el nombre del archivo al usuario
+    nombre_archivo = input("Introduce el nombre del archivo CSV para guardar la diferencia de promedios (sin extensión): ")
+
+    # Guardar la diferencia de promedios en un archivo CSV con el nombre proporcionado por el usuario
+    archivo_diferencia_promedios = rf'C:\Users\cordo\OneDrive\Escritorio\Masterdiaboloso\Dispersión\TFM\Olasnuevas2\{nombre_archivo}.csv'
+    diferencia_promedios.to_csv(archivo_diferencia_promedios, index=True)
+
+    print(f"Diferencia de promedios guardada en {archivo_diferencia_promedios}")
