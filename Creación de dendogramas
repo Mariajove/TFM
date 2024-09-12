@@ -1,0 +1,136 @@
+import os
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+import matplotlib.pyplot as plt
+import numpy as np
+
+#Este código genera los dendogramas y los clusteres. En este caso, se obtienen los dendogramas de los métodos single, complete, ward, centroid y average, y se 
+#obtienen los clusteres que se repiten en todos estos, pero se puede suprimir el método single de la lista. Se ha realizado para el umbral del 40%, pero se puede modificar
+
+def generar_dendrograma_40(file_path, output_base_dir):
+    # Solicitar el nombre de la carpeta de salida al usuario
+    output_dir_name = input("Por favor, ingrese el nombre de la carpeta de salida para umbral 40%: ")
+    output_dir = os.path.join(output_base_dir, output_dir_name)
+
+    # Verificar si el archivo existe
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"El archivo especificado no existe: {file_path}")
+
+    # Verificar si el directorio de salida existe
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # Leer el archivo CSV
+    df = pd.read_csv(file_path)
+
+    # Preprocesar los datos
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    df.dropna(inplace=True)
+    df_transposed = df.set_index('hour').transpose()
+
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(df_transposed)
+
+    # Métodos de aglomeración. Aqui se puede eliminar el 'single' para que no se realice
+    methods = ['single', 'complete', 'average', 'centroid', 'ward']
+    threshold_40_percent = {}
+
+    for method_selected in methods:
+        print(f"\nGenerando dendrograma con el método: {method_selected}")
+        linked = linkage(scaled_data, method=method_selected)
+        max_distance = np.max(linked[:, 2])
+        threshold_40_percent[method_selected] = 0.40 * max_distance  # Umbral del 40%, se puede modificar para tener el deseado
+
+        # Aplicar el clustering
+        clusters = fcluster(linked, threshold_40_percent[method_selected], criterion='distance')
+
+        # Plotear el dendrograma
+        plt.figure(figsize=(15, 10))
+        dendro = dendrogram(linked, orientation='top', distance_sort='descending', show_leaf_counts=True, labels=df_transposed.index)
+
+        # Forzar que todas las etiquetas de las estaciones sean de color negro
+        ax = plt.gca()
+        xlbls = ax.get_xmajorticklabels()
+
+        for lbl in xlbls:
+            lbl.set_color('black')  # Establecer el color negro para todas las etiquetas
+
+        plt.title(f'Dendrograma de Clustering Jerárquico - Método: {method_selected} (Umbral 40%)')
+        plt.xlabel('Muestras')
+        plt.ylabel('Distancia')
+        plt.xticks(rotation=90)
+        plt.axhline(y=threshold_40_percent[method_selected], color='r', linestyle='--', label='40% threshold')  # Etiqueta del 40%
+        plt.legend()
+
+        # Ajustar el espacio superior e inferior para mover el dendrograma hacia arriba
+        plt.subplots_adjust(top=0.9, bottom=0.2)  # Ajusta el espacio de la figura
+        plt.tight_layout()  # Asegura que los elementos se ajusten correctamente en el gráfico
+
+        # Guardar la figura del dendrograma
+        dendrogram_img_path = os.path.join(output_dir, f'dendrograma_40_{method_selected}.png')
+        plt.savefig(dendrogram_img_path)
+        plt.close()
+        print(f"Dendrograma guardado en: {dendrogram_img_path}")
+
+    # Aplicar los umbrales y guardar los clusters
+    clusters_40_percent = {method: fcluster(linkage(scaled_data, method=method), threshold_40_percent[method], criterion='distance') for method in methods}
+
+    # Determinar estaciones siempre agrupadas
+    num_samples = scaled_data.shape[0]
+    always_together_40 = np.zeros((num_samples, num_samples))
+
+    for method in methods:
+        clusters_40 = clusters_40_percent[method]
+        for j in range(num_samples):
+            for k in range(num_samples):
+                if clusters_40[j] == clusters_40[k]:
+                    always_together_40[j, k] += 1
+
+    always_together_40_names = []
+    stations = df_transposed.index.tolist()
+
+    for j in range(num_samples):
+        for k in range(j + 1, num_samples):
+            if always_together_40[j, k] == len(methods):
+                always_together_40_names.append((stations[j], stations[k]))
+
+    # Guardar los pares que siempre están juntos en un archivo CSV
+    result_40_df = pd.DataFrame(always_together_40_names, columns=['Estacion1', 'Estacion2'])
+    result_40_df.to_csv(os.path.join(output_dir, 'clusters_40_percent.csv'), index=False)
+    print(f"Resultados guardados en {output_dir}")
+
+    # Dendrograma resaltado para el método 'single'
+    print("\nGenerando dendrograma resaltado para el método: single")
+    linked_single = linkage(scaled_data, method='single')
+
+    # Plotear dendrograma resaltando los pares que siempre están juntos
+    plt.figure(figsize=(15, 10))
+    dendro_single = dendrogram(linked_single, orientation='top', distance_sort='descending', show_leaf_counts=True, labels=df_transposed.index)
+
+    # Forzar que todas las etiquetas de las estaciones sean de color negro en el método 'single'
+    ax = plt.gca()
+    xlbls = ax.get_xmajorticklabels()
+
+    for lbl in xlbls:
+        lbl.set_color('black')  # Establecer el color negro para todas las etiquetas
+
+    plt.title('Dendrograma de Clustering Jerárquico - Método: single (Umbral 40%)')
+    plt.xlabel('Muestras')
+    plt.ylabel('Distancia')
+    plt.xticks(rotation=90)
+
+    # Ajustar el espacio superior e inferior
+    plt.subplots_adjust(top=0.9, bottom=0.2)
+    plt.tight_layout()
+
+    # Guardar el dendrograma resaltado
+    dendrogram_img_path_single = os.path.join(output_dir, 'dendrograma_single_resaltado_40.png')
+    plt.savefig(dendrogram_img_path_single)
+    plt.close()
+    print(f"Dendrograma resaltado guardado en: {dendrogram_img_path_single}")
+
+# Ruta específica en Windows del archivo CSV
+file_path = r'C:\Users\cordo\OneDrive\Escritorio\Masterdiaboloso\Dispersión\TFM\Olasnuevas2\modificados\combinado_1108.csv'
